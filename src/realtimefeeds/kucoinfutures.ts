@@ -1,5 +1,5 @@
 import { Writable } from 'stream'
-import { getJSON, getRandomString, postJSON } from '../handy.ts'
+import { getJSON, getRandomString, ONE_SEC_IN_MS, postJSON, wait } from '../handy.ts'
 import { Filter } from '../types.ts'
 import { MultiConnectionRealTimeFeedBase, PoolingClientBase, RealTimeFeedBase } from './realtimefeed.ts'
 
@@ -67,6 +67,12 @@ export class KucoinFuturesSingleConnectionRealTimeFeed extends RealTimeFeedBase 
   protected async provideManualSnapshots(filters: Filter<string>[], shouldCancel: () => boolean) {
     const depthSnapshotFilter = filters.find((f) => f.channel === 'contractMarket/level2Snapshot')
     if (!depthSnapshotFilter) {
+      return
+    }
+
+    // The futures REST snapshot briefly trails the WebSocket sequence after subscription.
+    await wait(ONE_SEC_IN_MS)
+    if (shouldCancel()) {
       return
     }
 

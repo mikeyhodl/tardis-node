@@ -271,6 +271,43 @@ test('does not let an old onConnected task subscribe on a reconnected socket', a
   }
 })
 
+test('starts manual snapshots after subscription activity without an additional delay', async () => {
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  await once(server, 'listening')
+
+  const address = server.address()
+  assert.ok(address !== null && typeof address === 'object')
+
+  const sockets = new Set<WebSocket>()
+  server.on('connection', (socket) => {
+    sockets.add(socket)
+    socket.once('close', () => sockets.delete(socket))
+    socket.once('message', () => {
+      socket.send(JSON.stringify({ subscribed: true }))
+      socket.send(JSON.stringify({ data: true }))
+    })
+  })
+
+  const feed = new SnapshotStartupRealTimeFeed(`ws://127.0.0.1:${address.port}`)
+  const iterator = feed[Symbol.asyncIterator]()
+
+  try {
+    assert.deepStrictEqual((await withTimeout(iterator.next())).value, { subscribed: true })
+    assert.deepStrictEqual((await withTimeout(iterator.next())).value, { data: true })
+    await waitFor(() => feed.snapshotCalls === 1)
+    await withTimeout(iterator.return())
+  } finally {
+    try {
+      await withTimeout(iterator.return())
+    } finally {
+      for (const socket of sockets) {
+        socket.terminate()
+      }
+      await new Promise<void>((resolve) => server.close(() => resolve()))
+    }
+  }
+})
+
 test('discards a delayed manual snapshot from a disconnected socket', async () => {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await once(server, 'listening')
@@ -556,6 +593,28 @@ class TestSnapshotRealTimeFeed extends RealTimeFeedBase {
       this.manualSnapshotsBuffer.push({ oldSnapshot: true })
     }
     this.firstSnapshotFinished = true
+  }
+}
+
+class SnapshotStartupRealTimeFeed extends RealTimeFeedBase {
+  protected readonly wssURL: string
+  snapshotCalls = 0
+
+  constructor(wssURL: string) {
+    super('test', [{ channel: 'test', symbols: ['A', 'B'] }], undefined)
+    this.wssURL = wssURL
+  }
+
+  protected mapToSubscribeMessages() {
+    return [{ type: 'subscribe' }]
+  }
+
+  protected messageIsError() {
+    return false
+  }
+
+  protected async provideManualSnapshots() {
+    this.snapshotCalls++
   }
 }
 

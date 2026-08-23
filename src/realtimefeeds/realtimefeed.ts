@@ -332,15 +332,6 @@ export abstract class RealTimeFeedBase implements RealTimeFeedIterable {
     const shouldCancel = () => this._isConnectionOpen(connection) === false
 
     try {
-      const symbolsCount = this._filters.reduce((prev, curr) => {
-        if (curr.symbols !== undefined) {
-          for (const symbol of curr.symbols) {
-            prev.add(symbol)
-          }
-        }
-        return prev
-      }, new Set<string>()).size
-
       await this.onConnected()
 
       if (shouldCancel()) {
@@ -360,17 +351,11 @@ export abstract class RealTimeFeedBase implements RealTimeFeedIterable {
 
       this.debug('(connection id: %d) established connection', connection.id)
 
-      //wait before fetching snapshots until we're sure we've got proper connection estabilished (received some messages)
-      while (shouldCancel() === false && connection.receivedMessagesCount < symbolsCount * 2) {
+      const messagesBeforeSnapshots = subscribeMessages.length === 0 ? 0 : subscribeMessages.length + 1
+      // Wait for subscription acknowledgements and the first data message before fetching snapshots.
+      while (shouldCancel() === false && connection.receivedMessagesCount < messagesBeforeSnapshots) {
         await this._wait(100, connection.controller.signal)
       }
-
-      if (shouldCancel()) {
-        return
-      }
-
-      // wait a second just in case before starting fetching the snapshots
-      await this._wait(1 * ONE_SEC_IN_MS, connection.controller.signal)
 
       if (shouldCancel()) {
         return
