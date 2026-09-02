@@ -420,6 +420,8 @@ const BYBIT_CHANNELS = [
   'long_short_ratio',
   'orderbook.1',
   'orderbook.50',
+  'orderbook.rpi',
+  'orderbook.full',
   'orderbook.500',
   'publicTrade',
   'tickers',
